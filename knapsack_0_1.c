@@ -40,13 +40,16 @@ void print_items(Item* items, u64 n) {
 // that gives it maximum value at the current step (local maximum).
 
 // This is not efficient solution, since it does redundant computations.
+// It struggles even with small sample size that are not trivial (like n = 50, knapsack_space = 500).
+// This is because in that case, if items can't reduce space to zero, algorithm will recurse
+// all the way down until n = 0 (which is horrible for even a small n).
 Item recursive_solution(Item* items, u64 n, f64 knapsack_space) {
 	// If no more space or no more items.
-	if(knapsack_space == 0 || n == 0) {
+	if(knapsack_space <= 0 || n == 0) {
 		return (Item){0, 0};
 	}
-
-	// Exclude currently last item if its weight exceeds knapsack space.
+	
+	// Exclude currently last item if its weight exceeds knapsack space and recurse further.
 	if(items[n-1].weight > knapsack_space) {
 		return recursive_solution(items, n-1, knapsack_space);
 	}
