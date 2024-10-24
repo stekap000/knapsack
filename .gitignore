@@ -1,0 +1,7 @@
+*.bat
+*.sh
+*~
+*.exe
+*.dll
+*.lib
+*.json
