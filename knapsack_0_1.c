@@ -93,21 +93,21 @@ Item recursive_solution(Item* items, u32 n, f32 knapsack_space) {
 // =========================================================================================================
 
 Item solve(Item* items, u32 n, u32 knapsack_space, Item* buffer, u32 total_knapsack_space) {
-	u32 base_buffer_index = ((n-1) * total_knapsack_space + (knapsack_space - 1));
-	
 	// If no more space or no more items.
 	if(knapsack_space <= 0 || n == 0) {
 		return (Item){0, 0};
 	}
 	
-	if(buffer[base_buffer_index].value >= 0) {
-		return buffer[base_buffer_index];
+	u32 current_item_index = ((n-1) * total_knapsack_space + (knapsack_space - 1));
+	
+	if(buffer[current_item_index].value >= 0) {
+		return buffer[current_item_index];
 	}
 	
 	// Exclude currently last item if its weight exceeds knapsack space and recurse further.
 	if((u32)items[n-1].weight > knapsack_space) {
-		buffer[base_buffer_index] = solve(items, n-1, knapsack_space, buffer, total_knapsack_space);
-		return buffer[base_buffer_index];
+		buffer[current_item_index] = solve(items, n-1, knapsack_space, buffer, total_knapsack_space);
+		return buffer[current_item_index];
 	}
 
 	// Go through cases where we exclude currently last item and where we include it.
@@ -117,18 +117,17 @@ Item solve(Item* items, u32 n, u32 knapsack_space, Item* buffer, u32 total_knaps
 	Item value_excluded = solve(items, n-1, knapsack_space, buffer, total_knapsack_space);
 	Item value_included = solve(items, n-1, knapsack_space - (u32)items[n-1].weight, buffer, total_knapsack_space);
 
-	buffer[base_buffer_index] = value_excluded;
-	buffer[base_buffer_index - (u32)items[n-1].weight] = value_included;
-	
 	value_included.weight += (u32)items[n-1].weight;
 	value_included.value  += (u32)items[n-1].value;
 
 	if(value_excluded.value > value_included.value) {
-		return value_excluded;
+		buffer[current_item_index] = value_excluded;
 	}
 	else {
-		return value_included;
+		buffer[current_item_index] = value_included;
 	}
+
+	return buffer[current_item_index];
 }
 
 Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u32 knapsack_space) {
@@ -140,6 +139,7 @@ Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 	}
 	
 	Item result = solve(items, n, knapsack_space, buffer, knapsack_space);
+	
 	free(buffer);
 	return result;
 }
@@ -148,7 +148,6 @@ int main(void) {
 	u32 seed = 1234;
 	u32 n = 10;
 	f32 knapsack_space = 150;
-	(void)knapsack_space;
 	
 	Item* items = generate_random_items(n, seed, 100, 100);
 	if(items) {
