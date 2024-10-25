@@ -15,8 +15,8 @@ Item* generate_random_items(u32 n, u32 seed, f32 max_item_weight, f32 max_item_v
 	Item* items = malloc(n * sizeof(Item));
 	if(items) {
 		for(u32 i = 0; i < n; ++i) {
-			items[i].weight = (u32)((f32)rand()/(f32)RAND_MAX * max_item_weight);
-			items[i].value = (u32)((f32)rand()/(f32)RAND_MAX * max_item_value);
+			items[i].weight = ((f32)rand()/(f32)RAND_MAX * max_item_weight);
+			items[i].value = ((f32)rand()/(f32)RAND_MAX * max_item_value);
 		}
 		return items;
 	}
@@ -53,6 +53,7 @@ void print_items(Item* items, u32 n) {
 
 // This solution does not require additional explicit space for storing computation information,
 // but that is of little relevancy when it eats stack with function stack frames.
+// For any larger input value, default stack size can get exceeded.
 
 // Asymptotic time complexity is O(2^n) since we traverse all possible paths and this can lead to
 // repetitions, where we calculate function value multiple times for the same input.
@@ -87,19 +88,52 @@ Item recursive_solution(Item* items, u32 n, f32 knapsack_space) {
 
 // =========================================================================================================
 // RECURSIVE SOLUTION WITH 2D TABLE (ITEM WEIGHTS AND KNAPSACK WEIGHT MUST BE INTEGERS IN THIS APPROACH)
-// Time complexity  :
-// Space complexity :
-//                   
+//
+// Time complexity  : O(n*total_knapsack_space)
+// Space complexity : O(n*total_knapsack_space)
 // =========================================================================================================
+
+// This algorithm is the same as the most basic recursive one, but it uses additional buffer to
+// avoid doing computations that were done previously. This is done by recognizing that different
+// recursive calls to the function only differ in two arguments, "n" and "knapsack_space". That
+// means that if we form a grid of all possible value pairs (n, knapsack_space), we can store all
+// possible computation results of all recursive calls that we encounter, thus saving computation time
+// if the same recursive calls happen later.
+
+// It is irrelevant (from asymptotic point of view) how we organize this grid.
+// Here, grid is just an array that is equivalent to the matrix with the first coordinate being
+// number of items remaining, and the second being remaining weight. Again, this interpretation is
+// irrelevant and not needed since we just need buffer of dimension n*total_knapsack_space.
+
+// In this form, it only works if weights are integer numbers, since they are used in buffer indexing.
+
+// If weights are not integer numbers, then one possibility is to map them to integers, thus accepting
+// small error but gaining speed.
+// Another problem is that weights can be very large numbers or be scattered (have large variance).
+// In that case, we would need a mapping that would move them to lower value in the case they are
+// large but nicely grouped, or a mapping that would essentially be a non-cryptographic hash in the
+// case of large variance.
+
+// Compared to the most basic recursive algorithm that is exponential in time, this one is quadratic,
+// which is a major difference.
+// The price we pay for that is that we need space for the table that has quadratic complexity.
+// Of course, in specific situations, we could also experiment with different table sizes in
+// range [0, (n*total_knapsack_space)], thus taking more granular tradeoff between space and time
+// complexity.
+// Additionally, like the basic recursive solution, we need to take into account the default stack
+// size if the input is large.
 
 Item solve(Item* items, u32 n, u32 knapsack_space, Item* buffer, u32 total_knapsack_space) {
 	// If no more space or no more items.
 	if(knapsack_space <= 0 || n == 0) {
 		return (Item){0, 0};
 	}
-	
+
+	// Just an index calculation since we represent buffer as an array instead of matrix.
 	u32 current_item_index = ((n-1) * total_knapsack_space + (knapsack_space - 1));
-	
+
+	// Buffer items values are initialized to -1, so if the value is not -1, then we have already
+	// calculated that entry and we can just return it without again recursively calling function.
 	if(buffer[current_item_index].value >= 0) {
 		return buffer[current_item_index];
 	}
@@ -146,12 +180,12 @@ Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 
 int main(void) {
 	u32 seed = 1234;
-	u32 n = 10;
-	f32 knapsack_space = 150;
+	u32 n = 15;
+	f32 knapsack_space = 155;
 	
 	Item* items = generate_random_items(n, seed, 100, 100);
 	if(items) {
-		print_items(items, n);
+		//print_items(items, n);
 		//Item result = recursive_solution(items, n, knapsack_space);
 		Item result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		printf("Maximum weight: %lf\n", result.weight);
