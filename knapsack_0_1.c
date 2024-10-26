@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#define IGNORE(param) (void)(param)
+
 typedef unsigned int u32;
 typedef float f32;
 
@@ -123,10 +125,10 @@ Item recursive_solution(Item* items, u32 n, f32 knapsack_space) {
 // Additionally, like the basic recursive solution, we need to take into account the default stack
 // size if the input is large.
 
-Item solve(Item* items, u32 n, u32 knapsack_space, Item* buffer, u32 total_knapsack_space) {
+Item solve1(Item* items, u32 n, u32 knapsack_space, Item* buffer, u32 total_knapsack_space) {
 	// If no more space or no more items.
 	if(knapsack_space <= 0 || n == 0) {
-		return (Item){0, 0};
+	 	return (Item){0, 0};
 	}
 
 	// Just an index calculation since we represent buffer as an array instead of matrix.
@@ -140,7 +142,7 @@ Item solve(Item* items, u32 n, u32 knapsack_space, Item* buffer, u32 total_knaps
 	
 	// Exclude currently last item if its weight exceeds knapsack space and recurse further.
 	if((u32)items[n-1].weight > knapsack_space) {
-		buffer[current_item_index] = solve(items, n-1, knapsack_space, buffer, total_knapsack_space);
+		buffer[current_item_index] = solve1(items, n-1, knapsack_space, buffer, total_knapsack_space);
 		return buffer[current_item_index];
 	}
 
@@ -148,8 +150,8 @@ Item solve(Item* items, u32 n, u32 knapsack_space, Item* buffer, u32 total_knaps
 	// If we include it, then we count its value and weight and reduce current knapsack space.
 	
 	// We pick the path that gives maximum value for the current step (local computational maximum).
-	Item value_excluded = solve(items, n-1, knapsack_space, buffer, total_knapsack_space);
-	Item value_included = solve(items, n-1, knapsack_space - (u32)items[n-1].weight, buffer, total_knapsack_space);
+	Item value_excluded = solve1(items, n-1, knapsack_space, buffer, total_knapsack_space);
+	Item value_included = solve1(items, n-1, knapsack_space - (u32)items[n-1].weight, buffer, total_knapsack_space);
 
 	value_included.weight += (u32)items[n-1].weight;
 	value_included.value  += (u32)items[n-1].value;
@@ -174,7 +176,61 @@ Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 		buffer[i].value = -1;
 	}
 	
-	Item result = solve(items, n, knapsack_space, buffer, knapsack_space);
+	Item result = solve1(items, n, knapsack_space, buffer, knapsack_space);
+	
+	free(buffer);
+	return result;
+}
+
+// =========================================================================================================
+// ITERATIVE SOLUTION WITH 2D TABLE (ITEM WEIGHTS AND KNAPSACK WEIGHT MUST BE INTEGERS IN THIS APPROACH)
+//
+// Time complexity  : O(n*total_knapsack_space)
+// Space complexity : O(n*total_knapsack_space)
+// =========================================================================================================
+
+// This approach has no recursion stack frame drawbacks.
+
+// Table value at location (i, w) represents current accumulated value of (i) items, given that the
+// current knapsack space is (w).
+
+Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u32 knapsack_space) {
+	u32 buffer_size = (n)*(knapsack_space + 1);
+	Item* buffer = malloc(buffer_size*sizeof(Item));
+
+	for(u32 i = 0; i < buffer_size; ++i) {
+		buffer[i].value = 0;
+		buffer[i].weight = 0;
+	}
+
+	Item value_included = {0,0};
+
+// This is the buffer index when we work with item (i) and knapsack space (w).
+#define buffer_index(i, w) ((i)*(knapsack_space + 1) + (w))
+	
+	for(u32 i = 0; i < n; ++i) {
+		// Iterate over all possible knapsack weights for which we can include current item.
+		// These are all knapsack weights that are >= current item weight.
+		// Reason for this is that values for other knapsack weights won't change since we won't
+		// be able to include the current item.
+		for(u32 w = knapsack_space; w >= (u32)items[i].weight; --w) {
+			// Value when the current item is included.
+			// We get this value by recognizing that it is the value of the current item plus the value
+			// that was accumulated from previous number of items, given that the remaining knapsack
+			// space is equal to the current one being iterated minus current item weight.
+			value_included.value = buffer[buffer_index(i, w - (u32)items[i].weight)].value + (u32)items[i].value;
+			value_included.weight = buffer[buffer_index(i, w - (u32)items[i].weight)].weight + (u32)items[i].weight;
+
+			// If the value is greater when the item is included.
+			if(value_included.value > buffer[buffer_index(i, w)].value) {
+				buffer[buffer_index(i, w)] = value_included;
+			}
+		}
+	}
+
+	Item result = buffer[buffer_index(n-1, knapsack_space)];
+	
+#undef buffer_index
 	
 	free(buffer);
 	return result;
@@ -191,7 +247,8 @@ int main(void) {
 	if(items) {
 		//print_items(items, n);
 		//Item result = recursive_solution(items, n, knapsack_space);
-		Item result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		//Item result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		printf("Maximum weight: %lf\n", result.weight);
 		printf("Maximum value : %lf\n", result.value);
 	}
