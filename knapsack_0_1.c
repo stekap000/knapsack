@@ -130,7 +130,7 @@ Item solve(Item* items, u32 n, u32 knapsack_space, Item* buffer, u32 total_knaps
 	}
 
 	// Just an index calculation since we represent buffer as an array instead of matrix.
-	u32 current_item_index = ((n-1) * total_knapsack_space + (knapsack_space - 1));
+	u32 current_item_index = ((n-1) * (total_knapsack_space + 1) + knapsack_space);
 
 	// Buffer items values are initialized to -1, so if the value is not -1, then we have already
 	// calculated that entry and we can just return it without again recursively calling function.
@@ -165,7 +165,9 @@ Item solve(Item* items, u32 n, u32 knapsack_space, Item* buffer, u32 total_knaps
 }
 
 Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u32 knapsack_space) {
-	u32 buffer_size = n*knapsack_space;
+	// knapsack_space + 1 because we need weight range [0, knapsack_space].
+	// n used instead of (n+1) because we handle n = 0 case explicitly with if.
+	u32 buffer_size = n*(knapsack_space + 1);
 	Item* buffer = malloc(buffer_size*sizeof(Item));
 
 	for(u32 i = 0; i < buffer_size; ++i) {
@@ -177,6 +179,8 @@ Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 	free(buffer);
 	return result;
 }
+
+// =========================================================================================================
 
 int main(void) {
 	u32 seed = 1234;
