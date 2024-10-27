@@ -191,8 +191,8 @@ Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 
 // This approach has no recursion stack frame drawbacks.
 
-// Table value at location (i, w) represents current accumulated value of (i) items, given that the
-// current knapsack space is (w).
+// Table value at location (i, w) represents current accumulated value of (i) items (some of them are
+// included and some are not), given that the current knapsack space is (w).
 
 Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u32 knapsack_space) {
 	u32 buffer_size = (n)*(knapsack_space + 1);
@@ -204,6 +204,35 @@ Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 	}
 
 	Item value_included = {0,0};
+
+	/*
+	  W = 2
+	  
+	  (1, 1)
+	  (1, 2)
+	  (1, 3)
+
+	     0 1 2
+	  	 
+	  0  0 0 0
+	  1  0 1 1
+	  2  1 3 2
+	  3  3 5 3
+
+	  1 1 0
+	  3 2 0
+	  5 3 3
+
+	  W = 3
+
+	     0 1 2 3
+	  	 
+	  0  0 0 0 0
+	  1  0 1 1 1
+	  2  1 3 3 2
+	  3  3 5 3 3
+	  
+	*/
 
 // This is the buffer index when we work with item (i) and knapsack space (w).
 #define buffer_index(i, w) ((i)*(knapsack_space + 1) + (w))
