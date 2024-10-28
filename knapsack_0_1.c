@@ -4,7 +4,6 @@
 #define IGNORE(param) (void)(param)
 
 typedef unsigned int u32;
-typedef int s32;
 typedef float f32;
 
 typedef struct Item Item;
@@ -195,6 +194,7 @@ Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 	Item* buffer = malloc(buffer_size*sizeof(Item));
 
 	if(!buffer) {
+		printf("Memory allocation failed.\n");
 		return (Item){0, 0};
 	}
 
@@ -209,7 +209,7 @@ Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 }
 
 // =========================================================================================================
-// ITERATIVE SOLUTION WITH 2D TABLE (ITEM WEIGHTS AND KNAPSACK WEIGHT MUST BE INTEGERS IN THIS APPROACH)
+// ITERATIVE SOLUTION WITH 2D BUFFER (ITEM WEIGHTS AND KNAPSACK WEIGHT MUST BE INTEGERS IN THIS APPROACH)
 //
 // Time complexity  : O(n*total_knapsack_space)
 // Space complexity : O(n*total_knapsack_space)
@@ -246,6 +246,7 @@ Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 	Item* buffer = calloc(buffer_size, sizeof(Item));
 
 	if(!buffer) {
+		printf("Memory allocation failed.\n");
 		return (Item){0, 0};
 	}
 
@@ -308,18 +309,72 @@ Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 }
 
 // =========================================================================================================
+// ITERATIVE SOLUTION WITH 1D BUFFER (ITEM WEIGHTS AND KNAPSACK WEIGHT MUST BE INTEGERS IN THIS APPROACH)
+//
+// Time complexity  : O(n*total_knapsack_space)
+// Space complexity : O(total_knapsack_space)
+// =========================================================================================================
+
+//   0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  20 
+// ====================================================================================
+//   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0 
+//   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0 
+//   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0 
+//   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0   0 
+//   0   0   0   0   0   0   0   0   0   0   0   0  40  40  40  40  40  40  40  40  40 
+//   0   0   0   0   0   0   0   0   0   0   0   0  40  40  40  40  40  40  40  40  40 
+//   0   0   0   0   0   0   0   0   0   0   0   0  40  40  40  40  40  40  40  40  40 
+//   0   0   0   0   0   0   0   0   0   0   0   0  40  40  40  40  40  40  40  40  40 
+//   0   0   0   0   0   0   0   0   0   0   0   0  40  40  40  40  40  40  40  40  67 
+//   0   0   0  35  35  35  35  35  35  35  35  35  40  40  40  75  75  75  75  75  75 
+//   0   0   0  35  35  35  35  35  35  35  35  35  40  40  40  75  75  75  75  75  75 
+//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
+//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
+//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
+//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
+//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
+//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
+//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
+//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
+//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
+
+Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u32 knapsack_space) {
+ 	u32 buffer_size = knapsack_space + 1;
+	Item* buffer = calloc(buffer_size, sizeof(Item));
+
+	Item value_included = {0, 0};
+
+	for(u32 i = 0; i < n; ++i) {
+		for(u32 w = knapsack_space; w >= (u32)items[i].weight && w > 0; --w) {
+			value_included.value = buffer[w - (u32)items[i].weight].value + (u32)items[i].value;
+			value_included.weight = buffer[w - (u32)items[i].weight].weight + (u32)items[i].weight;
+
+			if(value_included.value > buffer[w].value) {
+				buffer[w] = value_included;
+			}
+		}
+	}
+
+	Item result = buffer[knapsack_space];
+
+	free(buffer);
+	return result;
+}
+
+// =========================================================================================================
 
 int main(void) {
 	u32 seed = 1234;
 	u32 n = 100;
-	f32 knapsack_space = 1200;
+	f32 knapsack_space = 150;
 	
 	Item* items = generate_random_items(n, seed, 100, 100);
 	if(items) {
 		//print_items(items, n);
 		//Item result = recursive_solution(items, n, knapsack_space);
 		//Item result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
-		Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		//Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		Item result = iterative_solution_with_1D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		printf("Maximum weight: %lf\n", result.weight);
 		printf("Maximum value : %lf\n", result.value);
 	}
