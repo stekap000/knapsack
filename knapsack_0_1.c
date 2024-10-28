@@ -194,6 +194,10 @@ Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 	u32 buffer_size = n*(knapsack_space + 1);
 	Item* buffer = malloc(buffer_size*sizeof(Item));
 
+	if(!buffer) {
+		return (Item){0, 0};
+	}
+
 	for(u32 i = 0; i < buffer_size; ++i) {
 		buffer[i].value = -1;
 	}
@@ -211,46 +215,78 @@ Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 // Space complexity : O(n*total_knapsack_space)
 // =========================================================================================================
 
-// This approach has no recursion stack frame drawbacks.
+// This approach has no recursion stack frame drawbacks. Overall approach is the same as with recursion,
+// in the sense that we move through the items and we are making a choice of inclusion by taking the
+// maximum value at the current step ie. we are making local maximum steps in hopes that they lead us
+// closer to the global maximum.
 
-// Table value at location (i, w) represents current accumulated value of (i) items (some of them are
-// included and some are not), given that the current knapsack space is (w).
+// Table value at location (i, w) represents maximum accumulated value of (i) items (some of them are
+// included and some are not), given that the current knapsack weight is at maximum (w).
+// When deciding if we will include item (i) for some knapsack weight (w), we check the maximum value
+// accumulated from the previous items for that (w) in the knapsack (this is at location (i-1, w)). This
+// is the value without current item, meaning that if we update the table like this T(i, w) = T(i-1, w),
+// then we effectively chose to not include the current item. If, on the other hand, we want to include
+// the item, then that means that the location (i, w) must represent value after counting that item. Because
+// of this, we update the table like this T(i, w) = T(i-1, w - weight(i)) + value(i) ie. we are saying
+// that we will end up with the weight (w) if we were previously with the weight (w - weight(i)) and
+// then we added the current item whose weight is weight(i). We are also saying that the new value in
+// this case is the previous one at the mentioned postion plus the value of our current item.
+
+// Since our overall tactic is to always go for the local maximum value, we make a choice between these
+// two cases by taking the bigger value, and then we place it in the table.
+
+// Final result is stored as the final element in the table and the interpretation of this position
+// is that it is the maximum value accumulated by (i) items such that the total weight in knapsack
+// is at most (w).
 
 Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u32 knapsack_space) {
 	u32 buffer_size = (n)*(knapsack_space + 1);
-	Item* buffer = calloc(buffer_size, sizeof(Item));
 	
+	// Set all positions in the buffer to zero so that we don't need to worry.
+	Item* buffer = calloc(buffer_size, sizeof(Item));
+
 	if(!buffer) {
 		return (Item){0, 0};
 	}
 
-	for(u32 i = items[n-1].weight; i < knapsack_space + 1; ++i) {
-		buffer[i].value = (u32)items[n-1].value;
-		buffer[i].weight = (u32)items[n-1].weight;
+	// Fill the whole first row with first item value so that the first iteration in
+	// the loop below can immediately reference those values.
+	// We do this to avoid making an if/else exception within the loop that will just
+	// handle this initial case.
+	for(u32 i = items[0].weight; i < knapsack_space + 1; ++i) {
+		buffer[i].value = (u32)items[0].value;
+		buffer[i].weight = (u32)items[0].weight;
 	}
 
 	Item value_included = {0,0};
 
-// This is the buffer index when we work with item (i) and knapsack space (w).
+// This macro just calculates element index within our buffer when we supply indices as
+// we would in the case of a matrix.
 #define buffer_index(i, w) ((i)*(knapsack_space + 1) + (w))
-	
+
+	// First item is already handled, so we start with 1.
 	for(u32 i = 1; i < n; ++i) {
-		// Iterate over all possible knapsack weights for which we can include current item.
-		// These are all knapsack weights that are >= current item weight.
-		// Reason for this is that values for other knapsack weights won't change since we won't
-		// be able to include the current item.
+		// Iterate over all knapsack weights that are lower than the current item weight
+		// and just set all positions (i, w) to previous values from (i-1, w), since
+		// we know that we can't include the current item (because of its weight).
 		for(u32 w = 0; w < (u32)items[i].weight && w <= knapsack_space; ++w) {
 			buffer[buffer_index(i, w)] = buffer[buffer_index(i-1, w)];
 		}
+		
+		// Iterate over all possible knapsack weights for which we can include the current item.
+		// These are all knapsack weights that are >= current item weight.
+		// For all locations (i, w) for these weights, make a choice to include or exclude the item.
 		for(u32 w = knapsack_space; w >= (u32)items[i].weight && w > 0; --w) {
-			// Value when the current item is included.
+			// This is the value when the current item is included.
 			// We get this value by recognizing that it is the value of the current item plus the value
-			// that was accumulated from previous number of items, given that the remaining knapsack
-			// space is equal to the current one being iterated minus current item weight.
+			// that was accumulated from the previous items, given that their weight was (w - weight(i))
+			// ie. if we add our item to that weight, we get (w). In other words, we add current item value
+			// to whatever value is at (i-1, w - weight(i)).
 			value_included.value = buffer[buffer_index(i-1, w - (u32)items[i].weight)].value + (u32)items[i].value;
 			value_included.weight = buffer[buffer_index(i-1, w - (u32)items[i].weight)].weight + (u32)items[i].weight;
 
-			// If the value is greater when the item is included.
+			// If the value is greater when the item is included then choose that, otherwise choose
+			// the previous value for that weight (w).
 			if(value_included.value > buffer[buffer_index(i-1, w)].value) {
 				buffer[buffer_index(i, w)] = value_included;
 			}
@@ -259,7 +295,10 @@ Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 			}
 		}
 	}
-	
+
+	// Final result is at the last location in the buffer since the interpretation of that
+	// location is that it holds the maximum value accumulated by (n) items, such that
+	// their weight is at most (w), which is what we are looking for.
 	Item result = buffer[buffer_index(n-1, knapsack_space)];
 	
 #undef buffer_index
@@ -271,9 +310,9 @@ Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 // =========================================================================================================
 
 int main(void) {
-	u32 seed = 12345;
+	u32 seed = 1234;
 	u32 n = 100;
-	f32 knapsack_space = 120;
+	f32 knapsack_space = 1200;
 	
 	Item* items = generate_random_items(n, seed, 100, 100);
 	if(items) {
