@@ -4,6 +4,7 @@
 #define IGNORE(param) (void)(param)
 
 typedef unsigned int u32;
+typedef int s32;
 typedef float f32;
 
 typedef struct Item Item;
@@ -11,6 +12,10 @@ struct Item {
 	f32 weight;
 	f32 value;
 };
+
+// =========================================================================================================
+// HELPER AND DEBUG FUNCTIONS
+// =========================================================================================================
 
 Item* generate_random_items(u32 n, u32 seed, f32 max_item_weight, f32 max_item_value) {
 	srand(seed);
@@ -31,6 +36,23 @@ void print_items(Item* items, u32 n) {
 	for(u32 i = 0; i < n; ++i) {
 		printf("( %9.6lf, %9.6lf )\n", items[i].weight, items[i].value);
 	}
+}
+
+void print_buffer(Item* buffer, u32 n, u32 knapsack_space) {
+	for(u32 i = 0; i < knapsack_space; ++i) {
+		printf("%3d ", i);
+	}
+	printf("\n");
+	for(u32 i = 0; i < knapsack_space; ++i) {
+		printf("====");
+	}
+	for(u32 i = 0; i < n; ++i) {
+		if(i % knapsack_space == 0) {
+			printf("\n");
+		}
+		printf("%3d ", (u32)buffer[i].value);
+	}
+	printf("\n");
 }
 
 // =========================================================================================================
@@ -196,67 +218,48 @@ Item recursive_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 
 Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u32 knapsack_space) {
 	u32 buffer_size = (n)*(knapsack_space + 1);
-	Item* buffer = malloc(buffer_size*sizeof(Item));
+	Item* buffer = calloc(buffer_size, sizeof(Item));
+	
+	if(!buffer) {
+		return (Item){0, 0};
+	}
 
-	for(u32 i = 0; i < buffer_size; ++i) {
-		buffer[i].value = 0;
-		buffer[i].weight = 0;
+	for(u32 i = items[n-1].weight; i < knapsack_space + 1; ++i) {
+		buffer[i].value = (u32)items[n-1].value;
+		buffer[i].weight = (u32)items[n-1].weight;
 	}
 
 	Item value_included = {0,0};
 
-	/*
-	  W = 2
-	  
-	  (1, 1)
-	  (1, 2)
-	  (1, 3)
-
-	     0 1 2
-	  	 
-	  0  0 0 0
-	  1  0 1 1
-	  2  1 3 2
-	  3  3 5 3
-
-	  1 1 0
-	  3 2 0
-	  5 3 3
-
-	  W = 3
-
-	     0 1 2 3
-	  	 
-	  0  0 0 0 0
-	  1  0 1 1 1
-	  2  1 3 3 2
-	  3  3 5 3 3
-	  
-	*/
-
 // This is the buffer index when we work with item (i) and knapsack space (w).
 #define buffer_index(i, w) ((i)*(knapsack_space + 1) + (w))
 	
-	for(u32 i = 0; i < n; ++i) {
+	for(u32 i = 1; i < n; ++i) {
 		// Iterate over all possible knapsack weights for which we can include current item.
 		// These are all knapsack weights that are >= current item weight.
 		// Reason for this is that values for other knapsack weights won't change since we won't
 		// be able to include the current item.
-		for(u32 w = knapsack_space; w >= (u32)items[i].weight; --w) {
+		for(u32 w = 0; w < (u32)items[i].weight && w <= knapsack_space; ++w) {
+			buffer[buffer_index(i, w)] = buffer[buffer_index(i-1, w)];
+		}
+		for(u32 w = knapsack_space; w >= (u32)items[i].weight && w > 0; --w) {
 			// Value when the current item is included.
 			// We get this value by recognizing that it is the value of the current item plus the value
 			// that was accumulated from previous number of items, given that the remaining knapsack
 			// space is equal to the current one being iterated minus current item weight.
-			value_included.value = buffer[buffer_index(i, w - (u32)items[i].weight)].value + (u32)items[i].value;
-			value_included.weight = buffer[buffer_index(i, w - (u32)items[i].weight)].weight + (u32)items[i].weight;
+			value_included.value = buffer[buffer_index(i-1, w - (u32)items[i].weight)].value + (u32)items[i].value;
+			value_included.weight = buffer[buffer_index(i-1, w - (u32)items[i].weight)].weight + (u32)items[i].weight;
 
 			// If the value is greater when the item is included.
-			if(value_included.value > buffer[buffer_index(i, w)].value) {
+			if(value_included.value > buffer[buffer_index(i-1, w)].value) {
 				buffer[buffer_index(i, w)] = value_included;
+			}
+			else {
+				buffer[buffer_index(i, w)] = buffer[buffer_index(i-1, w)];
 			}
 		}
 	}
-
+	
 	Item result = buffer[buffer_index(n-1, knapsack_space)];
 	
 #undef buffer_index
@@ -268,9 +271,9 @@ Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 // =========================================================================================================
 
 int main(void) {
-	u32 seed = 1234;
-	u32 n = 15;
-	f32 knapsack_space = 155;
+	u32 seed = 12345;
+	u32 n = 100;
+	f32 knapsack_space = 120;
 	
 	Item* items = generate_random_items(n, seed, 100, 100);
 	if(items) {
@@ -284,3 +287,4 @@ int main(void) {
 	
 	return 0;
 }
+
