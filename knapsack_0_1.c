@@ -1,8 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #define IGNORE(param) (void)(param)
 
+typedef unsigned char u8;
 typedef unsigned int u32;
 typedef float f32;
 
@@ -16,8 +18,7 @@ struct Item {
 // HELPER AND DEBUG FUNCTIONS
 // =========================================================================================================
 
-Item* generate_random_items(u32 n, u32 seed, f32 max_item_weight, f32 max_item_value) {
-	srand(seed);
+Item* generate_random_items(u32 n, f32 max_item_weight, f32 max_item_value) {
 	Item* items = malloc(n * sizeof(Item));
 	if(items) {
 		for(u32 i = 0; i < n; ++i) {
@@ -29,6 +30,22 @@ Item* generate_random_items(u32 n, u32 seed, f32 max_item_weight, f32 max_item_v
 	else {
 		return 0;
 	}
+}
+
+u8 random_u8() {
+	return rand() & 1;
+}
+
+f32 random_f32() {
+	return (f32)rand()/(f32)RAND_MAX;
+}
+
+u32 random_int_in_range_exclusive(u32 min, u32 max) {
+	return min + rand() % (max - min);
+}
+
+f32 boltzmann_distribution(f32 cost_difference, f32 temperature) {
+	return exp(-cost_difference/temperature);
 }
 
 void print_items(Item* items, u32 n) {
@@ -303,7 +320,7 @@ Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 	Item result = buffer[buffer_index(n-1, knapsack_space)];
 	
 #undef buffer_index
-	print_buffer(buffer, buffer_size, knapsack_space+1);
+	
 	free(buffer);
 	return result;
 }
@@ -387,19 +404,89 @@ Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u
 }
 
 // =========================================================================================================
+// SIMULATED ANNEALING APPROXIMATE SOLUTION
+//
+// Time complexity  :
+// Space complexity :
+// =========================================================================================================
+
+Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
+	u8* state = calloc(n, sizeof(u8));
+
+	f32 temperature = 1;
+
+	Item previous_cost = {0, 0}
+	Item cost = {0, 0};
+
+	for(u32 i = 0; i < n; ++i) {
+		state[i] = random_u8();
+		if(state[i]) {
+			if(cost.weight + items[i].weight > knapsack_space) {
+				state[i] = 0;
+			}
+			else {
+				cost.value += items[i].value;
+				cost.weight += items[i].weight;
+			}
+		}
+	}
+
+	while(temperature > 1e-10) {
+		u32 random_item_index = random_int_in_range_exclusive(0, n);
+
+		// We are just flipping the state for random item.
+
+		previous_cost = cost;
+		if(state[random_item_index]) {
+			cost.value -= items[random_item_index];
+			cost.weigth -= items[random_item_index];
+		}
+		else {
+			cost.value += items[random_item_index];
+			cost.weigth += items[random_item_index];
+		}
+
+		// TODO(stekap): Maybe add rescaling for cost difference.
+
+		// We count this case as probability of 1.
+		if(cost.value - previous_cost < 0) {
+			
+		}
+		else {
+			f32 probability = boltzmann_distribution(cost.value - previous_cost, temperature);
+
+			// In this case we accept the solution.
+			if(random_f32() < probability) {
+				// Accept.
+			}
+			else {
+				// Reject.
+			}
+		}
+
+		temperature *= 0.95;
+	}
+
+	free(state);
+	return (Item){0, 0};
+}
+
+// =========================================================================================================
 
 int main(void) {
 	u32 seed = 1234;
-	u32 n = 20;
-	f32 knapsack_space = 20;
+	srand(seed);
+	u32 n = 100;
+	f32 knapsack_space = 5000;
 	
-	Item* items = generate_random_items(n, seed, 100, 100);
+	Item* items = generate_random_items(n, 100, 100);
 	if(items) {
 		//print_items(items, n);
 		//Item result = recursive_solution(items, n, knapsack_space);
 		//Item result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
-		Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		//Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		//Item result = iterative_solution_with_1D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		Item result = simulated_annealing_solution(items, n, knapsack_space);
 		printf("Maximum weight: %lf\n", result.weight);
 		printf("Maximum value : %lf\n", result.value);
 	}
