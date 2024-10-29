@@ -303,7 +303,7 @@ Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 	Item result = buffer[buffer_index(n-1, knapsack_space)];
 	
 #undef buffer_index
-	
+	print_buffer(buffer, buffer_size, knapsack_space+1);
 	free(buffer);
 	return result;
 }
@@ -314,6 +314,12 @@ Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 // Time complexity  : O(n*total_knapsack_space)
 // Space complexity : O(total_knapsack_space)
 // =========================================================================================================
+
+// This solution is like the previous one, but with the lower space complexity, which is now linear
+// instead of quadratic.
+
+// This is an example of the 2D buffer used in the previous iterative solution for 20 randomly
+// generated items with the seed 1234 and knapsack of size 20.
 
 //   0   1   2   3   4   5   6   7   8   9  10  11  12  13  14  15  16  17  18  19  20 
 // ====================================================================================
@@ -336,19 +342,38 @@ Item iterative_solution_with_2D_buffer_and_integer_weights(Item* items, u32 n, u
 //   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
 //   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
 //   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
-//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130 
+//   0   0   0  35  35  35  35  35  35  95  95  95 130 130 130 130 130 130 130 130 130
+
+// One important thing to notice in the previous algorithm is that in order to fill up the next row,
+// we just need values from the previous row, not from the whole buffer.
+// This means that we need at most 2 1D arrays. One that is currently updated and the other one that
+// is currently read.
+
+// But, we can even get to only one array of size of knapsack space, by noticing that if we calculate
+// new values from the right to left, like we did in the previous algorithm, there will be no conflict
+// during the update of new values, even if they are in the same row.
+// This happens because in order to calculate the value at position (w), we just need to reference some
+// position that is lower than that (w). Precise position will be (w) - weight(i) ie. weight for
+// which we are calculating new value minus the current item weight.
 
 Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u32 knapsack_space) {
  	u32 buffer_size = knapsack_space + 1;
+
+	// Set all positions in the buffer to zero so that we don't need to worry.
 	Item* buffer = calloc(buffer_size, sizeof(Item));
 
 	Item value_included = {0, 0};
 
+	// Go through all items.
 	for(u32 i = 0; i < n; ++i) {
+		// Go through all knapsack weights that can include current item.
 		for(u32 w = knapsack_space; w >= (u32)items[i].weight && w > 0; --w) {
+			// Calculate relevant properties in the case of including the item.
 			value_included.value = buffer[w - (u32)items[i].weight].value + (u32)items[i].value;
 			value_included.weight = buffer[w - (u32)items[i].weight].weight + (u32)items[i].weight;
 
+			// If value is greater when item is included then pick that value, otherwise do nothing
+			// since the old value is already there because we are using the same buffer.
 			if(value_included.value > buffer[w].value) {
 				buffer[w] = value_included;
 			}
@@ -365,16 +390,16 @@ Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u
 
 int main(void) {
 	u32 seed = 1234;
-	u32 n = 100;
-	f32 knapsack_space = 150;
+	u32 n = 20;
+	f32 knapsack_space = 20;
 	
 	Item* items = generate_random_items(n, seed, 100, 100);
 	if(items) {
 		//print_items(items, n);
 		//Item result = recursive_solution(items, n, knapsack_space);
 		//Item result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
-		//Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
-		Item result = iterative_solution_with_1D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		//Item result = iterative_solution_with_1D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		printf("Maximum weight: %lf\n", result.weight);
 		printf("Maximum value : %lf\n", result.value);
 	}
