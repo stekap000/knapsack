@@ -415,7 +415,7 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 
 	f32 temperature = 1;
 
-	Item previous_cost = {0, 0}
+	Item previous_cost = {0, 0};
 	Item cost = {0, 0};
 
 	for(u32 i = 0; i < n; ++i) {
@@ -431,50 +431,63 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 		}
 	}
 
-	while(temperature > 1e-10) {
+	while(temperature > 1e-20) {
 		u32 random_item_index = random_int_in_range_exclusive(0, n);
 
-		// We are just flipping the state for random item.
+		// Flip the state for random item.
+		state[random_item_index] ^= 1;
 
 		previous_cost = cost;
+
+		// If the item is now included.
 		if(state[random_item_index]) {
-			cost.value -= items[random_item_index];
-			cost.weigth -= items[random_item_index];
+			cost.value += items[random_item_index].value;
+			cost.weight += items[random_item_index].weight;
 		}
 		else {
-			cost.value += items[random_item_index];
-			cost.weigth += items[random_item_index];
+			cost.value -= items[random_item_index].value;
+			cost.weight -= items[random_item_index].weight;
+		}
+
+		// If the weight was exceeded.
+		if(cost.weight > knapsack_space) {
+		 	cost = previous_cost;
+			state[random_item_index] ^= state[random_item_index];
+		 	continue;
 		}
 
 		// TODO(stekap): Maybe add rescaling for cost difference.
 
 		// We count this case as probability of 1.
-		if(cost.value - previous_cost < 0) {
-			
+		if(cost.value - previous_cost.value < 0) {
+			//state[random_item_index] ^= state[random_item_index];
 		}
 		else {
-			f32 probability = boltzmann_distribution(cost.value - previous_cost, temperature);
+			f32 probability = boltzmann_distribution(cost.value - previous_cost.value, temperature);
 
 			// In this case we accept the solution.
 			if(random_f32() < probability) {
-				// Accept.
-			}
-			else {
-				// Reject.
+				state[random_item_index] ^= state[random_item_index];
 			}
 		}
 
 		temperature *= 0.95;
 	}
 
+	Item result = {0, 0};
+	for(u32 i = 0; i < n; ++i) {
+		result.value += items[i].value * state[i];
+		result.weight += items[i].weight * state[i];
+	}
+
 	free(state);
-	return (Item){0, 0};
+	return result;
 }
 
 // =========================================================================================================
 
 int main(void) {
-	u32 seed = 1234;
+	u32 seed = 88721;
 	srand(seed);
 	u32 n = 100;
 	f32 knapsack_space = 5000;
@@ -485,10 +498,14 @@ int main(void) {
 		//Item result = recursive_solution(items, n, knapsack_space);
 		//Item result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		//Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
-		//Item result = iterative_solution_with_1D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
-		Item result = simulated_annealing_solution(items, n, knapsack_space);
-		printf("Maximum weight: %lf\n", result.weight);
-		printf("Maximum value : %lf\n", result.value);
+		Item deterministic_result = iterative_solution_with_1D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		Item stochastic_result = simulated_annealing_solution(items, n, knapsack_space);
+		printf("DETERMINISTIC:\n");
+		printf("\tMaximum weight: %lf\n", deterministic_result.weight);
+		printf("\tMaximum value : %lf\n", deterministic_result.value);
+		printf("STOCHASTIC:\n");
+		printf("\tMaximum weight: %lf\n", stochastic_result.weight);
+		printf("\tMaximum value : %lf\n", stochastic_result.value);
 	}
 	
 	return 0;
