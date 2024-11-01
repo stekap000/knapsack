@@ -44,9 +44,7 @@ u32 random_int_in_range_exclusive(u32 min, u32 max) {
 	return min + rand() % (max - min);
 }
 
-#define PI 3.1415926535897932
 f32 boltzmann_distribution(f32 scalar, f32 cost_difference, f32 temperature) {
-	//return exp(-cost_difference*cost_difference/(2*temperature*temperature));
 	return scalar*exp(-cost_difference/temperature);
 }
 
@@ -415,11 +413,12 @@ Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u
 Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 	u8* state = calloc(n, sizeof(u8));
 
-	f32 temperature = 10000;
+	f32 temperature = 10;
 
 	Item previous_cost = {0, 0};
 	Item cost = {0, 0};
 
+	// Randomly pick items for initial state.
 	for(u32 i = 0; i < n; ++i) {
 		state[i] = random_u8();
 		if(state[i]) {
@@ -434,8 +433,12 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 	}
 
 	f32 average_value = 0;
+	f32 max_value = items[0].value;
 	for(u32 i = 0; i < n; ++i) {
 		average_value += items[i].value;
+		if(items[i].value > max_value) {
+			max_value = items[i].value;
+		}
 	}
 	average_value /= n;
 
@@ -466,9 +469,31 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 			cost.weight -= items[random_item_index].weight;
 		}
 
+		// L*e^(-delta*K/T) = 0.1
+		// ln(0.1) = ln(L) -delta*K/T, L = 1
+		// ln(0.1) = -delta*K/T
+		// delta*K = -T*ln(0.1)
+		// K = -(T/delta)*ln(0.1)
+		// K = (T/1)*2.3
+		// K = 2.3*T - rough calculation for K that gives us 0.1 for given distribution
+
+		// We will try to move from T=10 to T=1.
+		// Out delta is first normalized and then multiplied by 2.3*T which gives us range for
+		// delta from 0 to a point where distribution is roughly 0.1, which seems like a decent
+		// range of probabilities that are not extreme.
+
+		// Problem is that this leads to the same behaviour for all T since T cancels out.
+		// Yet, we need to map delta*K to some suitable range of probabilities.
+
+		// Maybe we can look at a point where value is close to zero for T = 1 (or whatever minimal
+		// value we choose) and then map delta*K to range a bit bigger than that one?
+
+		// Another possible tweak is in the scalar of boltzmann distribution. Maybe it can be dependant on
+		// temperature?
+
 		//#define debug
 		if(cost.value - previous_cost.value > 0) {
-			f32 mapped_cost_difference = (cost.value - previous_cost.value) / (average_value);
+			f32 mapped_cost_difference = (cost.value - previous_cost.value) / (max_value) * 10;
 			f32 acceptance_probability = boltzmann_distribution(1, mapped_cost_difference, temperature);
 			//printf("%lf   |   %lf\n", mapped_cost_difference, acceptance_probability);
 			//printf("%lf\n", random_f32());
@@ -482,28 +507,12 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 				cost = previous_cost;
 				state[random_item_index] ^= 1;
 			}
-			else {
-				// if(temperature > 0.0001) {
-				// 	temperature *= 0.99995;
-				// }
-			}
 		}
-		else {
-			// if(temperature > 0.0001) {
-			// 	temperature *= 0.99995;
-			// }
-		}
-
-		if(temperature > 0.00001) {
-			temperature *= 0.98;
+		
+		if(i % 1000 == 0 && temperature > 0.1) {
+			temperature *= 0.99;
 		}
 	}
-
-	// Item result = {0, 0};
-	// for(u32 i = 0; i < n; ++i) {
-	// 	result.value += items[i].value * state[i];
-	// 	result.weight += items[i].weight * state[i];
-	// }
 
 	free(state);
 	return cost;
@@ -514,8 +523,8 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 int main(void) {
 	u32 seed = 1234;
 	srand(seed);
-	u32 n = 1000;
-	f32 knapsack_space = 50000;
+	u32 n = 100;
+	f32 knapsack_space = 5000;
 	
 	Item* items = generate_random_items(n, 1000, 1000);
 	if(items) {
@@ -525,6 +534,7 @@ int main(void) {
 		//Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		Item deterministic_result = iterative_solution_with_1D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		Item stochastic_result = simulated_annealing_solution(items, n, knapsack_space);
+		Item max_stochastic_result = stochastic_result;
 		printf("DETERMINISTIC:\n");
 		printf("\tMaximum weight: %lf\n", deterministic_result.weight);
 		printf("\tMaximum value : %lf\n", deterministic_result.value);
@@ -532,10 +542,13 @@ int main(void) {
 		for(u32 i = 0; i < 100; ++i) {
 			srand(i * i * i * i);
 			stochastic_result = simulated_annealing_solution(items, n, knapsack_space);
-			printf("STOCHASTIC:\n");
-			printf("\tMaximum weight: %lf\n", stochastic_result.weight);
-			printf("\tMaximum value : %lf\n", stochastic_result.value);
+			if(stochastic_result.value > max_stochastic_result.value) {
+				max_stochastic_result = stochastic_result;
+			}
 		}
+		printf("STOCHASTIC:\n");
+		printf("\tMaximum weight: %lf\n", max_stochastic_result.weight);
+		printf("\tMaximum value : %lf\n", max_stochastic_result.value);
 #endif
 	}
 	
