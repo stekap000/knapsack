@@ -410,6 +410,8 @@ Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u
 // Space complexity :
 // =========================================================================================================
 
+// TODO(stekap): Add additional parameters that control annealing. Clean up and comment the code.
+
 Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 	u8* state = calloc(n, sizeof(u8));
 
@@ -442,7 +444,6 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 	}
 	average_value /= n;
 
-	//temperature > 1e-15
 	u32 i = 100000;
 	while(i--) {
 		u32 random_item_index = random_int_in_range_exclusive(0, n);
@@ -491,26 +492,26 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 		// Another possible tweak is in the scalar of boltzmann distribution. Maybe it can be dependant on
 		// temperature?
 
-		//#define debug
-		if(cost.value - previous_cost.value > 0) {
-			f32 mapped_cost_difference = (cost.value - previous_cost.value) / (max_value) * 10;
-			f32 acceptance_probability = boltzmann_distribution(1, mapped_cost_difference, temperature);
-			//printf("%lf   |   %lf\n", mapped_cost_difference, acceptance_probability);
-			//printf("%lf\n", random_f32());
+		// If we are in a better position, then we don't need to do anything here, since we already
+		// did the flip.
 
-			if(acceptance_probability > 1) {
-				acceptance_probability = 1;
-			}
+		// If we are locally in worse state than before.
+		if(cost.value < previous_cost.value) {
+			// Be careful here because delta should be positive. Since we know that within this condition
+			// current value is smaller, we force this by subtracting it from previous one and not the
+			// other way around.
+			f32 mapped_cost_difference = (previous_cost.value - cost.value) / (max_value) * 6;
+			f32 acceptance_probability = boltzmann_distribution(1, mapped_cost_difference, temperature);
 
 			// In this case we reject the flip.
-			if(random_f32() < 1 - acceptance_probability) {
+			if(random_f32() > acceptance_probability) {
 				cost = previous_cost;
 				state[random_item_index] ^= 1;
 			}
 		}
 		
-		if(i % 1000 == 0 && temperature > 0.1) {
-			temperature *= 0.99;
+		if(i % 100 == 0 && temperature > 0.1) {
+			temperature *= 0.95;
 		}
 	}
 
@@ -520,9 +521,11 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 
 // =========================================================================================================
 
+#include <time.h>
+
 int main(void) {
 	u32 seed = 1234;
-	srand(seed);
+	srand(time(0));
 	u32 n = 100;
 	f32 knapsack_space = 5000;
 	
@@ -538,7 +541,7 @@ int main(void) {
 		printf("DETERMINISTIC:\n");
 		printf("\tMaximum weight: %lf\n", deterministic_result.weight);
 		printf("\tMaximum value : %lf\n", deterministic_result.value);
-#ifndef debug
+
 		for(u32 i = 0; i < 100; ++i) {
 			srand(i * i * i * i);
 			stochastic_result = simulated_annealing_solution(items, n, knapsack_space);
@@ -549,7 +552,6 @@ int main(void) {
 		printf("STOCHASTIC:\n");
 		printf("\tMaximum weight: %lf\n", max_stochastic_result.weight);
 		printf("\tMaximum value : %lf\n", max_stochastic_result.value);
-#endif
 	}
 	
 	return 0;
