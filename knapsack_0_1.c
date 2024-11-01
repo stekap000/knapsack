@@ -44,8 +44,10 @@ u32 random_int_in_range_exclusive(u32 min, u32 max) {
 	return min + rand() % (max - min);
 }
 
-f32 boltzmann_distribution(f32 cost_difference, f32 temperature) {
-	return exp(-cost_difference/temperature);
+#define PI 3.1415926535897932
+f32 boltzmann_distribution(f32 scalar, f32 cost_difference, f32 temperature) {
+	//return exp(-cost_difference*cost_difference/(2*temperature*temperature));
+	return scalar*exp(-cost_difference/temperature);
 }
 
 void print_items(Item* items, u32 n) {
@@ -413,7 +415,7 @@ Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u
 Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 	u8* state = calloc(n, sizeof(u8));
 
-	f32 temperature = 1;
+	f32 temperature = 10000;
 
 	Item previous_cost = {0, 0};
 	Item cost = {0, 0};
@@ -431,7 +433,15 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 		}
 	}
 
-	while(temperature > 1e-20) {
+	f32 average_value = 0;
+	for(u32 i = 0; i < n; ++i) {
+		average_value += items[i].value;
+	}
+	average_value /= n;
+
+	//temperature > 1e-15
+	u32 i = 100000;
+	while(i--) {
 		u32 random_item_index = random_int_in_range_exclusive(0, n);
 
 		// Flip the state for random item.
@@ -443,56 +453,71 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 		if(state[random_item_index]) {
 			cost.value += items[random_item_index].value;
 			cost.weight += items[random_item_index].weight;
+
+			// If the weight was exceeded.
+			if(cost.weight > knapsack_space) {
+				cost = previous_cost;
+				state[random_item_index] ^= 1;
+				continue;
+			}
 		}
 		else {
 			cost.value -= items[random_item_index].value;
 			cost.weight -= items[random_item_index].weight;
 		}
 
-		// If the weight was exceeded.
-		if(cost.weight > knapsack_space) {
-		 	cost = previous_cost;
-			state[random_item_index] ^= state[random_item_index];
-		 	continue;
-		}
+		//#define debug
+		if(cost.value - previous_cost.value > 0) {
+			f32 mapped_cost_difference = (cost.value - previous_cost.value) / (average_value);
+			f32 acceptance_probability = boltzmann_distribution(1, mapped_cost_difference, temperature);
+			//printf("%lf   |   %lf\n", mapped_cost_difference, acceptance_probability);
+			//printf("%lf\n", random_f32());
 
-		// TODO(stekap): Maybe add rescaling for cost difference.
+			if(acceptance_probability > 1) {
+				acceptance_probability = 1;
+			}
 
-		// We count this case as probability of 1.
-		if(cost.value - previous_cost.value < 0) {
-			//state[random_item_index] ^= state[random_item_index];
-		}
-		else {
-			f32 probability = boltzmann_distribution(cost.value - previous_cost.value, temperature);
-
-			// In this case we accept the solution.
-			if(random_f32() < probability) {
-				state[random_item_index] ^= state[random_item_index];
+			// In this case we reject the flip.
+			if(random_f32() < 1 - acceptance_probability) {
+				cost = previous_cost;
+				state[random_item_index] ^= 1;
+			}
+			else {
+				// if(temperature > 0.0001) {
+				// 	temperature *= 0.99995;
+				// }
 			}
 		}
+		else {
+			// if(temperature > 0.0001) {
+			// 	temperature *= 0.99995;
+			// }
+		}
 
-		temperature *= 0.95;
+		if(temperature > 0.00001) {
+			temperature *= 0.98;
+		}
 	}
 
-	Item result = {0, 0};
-	for(u32 i = 0; i < n; ++i) {
-		result.value += items[i].value * state[i];
-		result.weight += items[i].weight * state[i];
-	}
+	// Item result = {0, 0};
+	// for(u32 i = 0; i < n; ++i) {
+	// 	result.value += items[i].value * state[i];
+	// 	result.weight += items[i].weight * state[i];
+	// }
 
 	free(state);
-	return result;
+	return cost;
 }
 
 // =========================================================================================================
 
 int main(void) {
-	u32 seed = 88721;
+	u32 seed = 1234;
 	srand(seed);
-	u32 n = 100;
-	f32 knapsack_space = 5000;
+	u32 n = 1000;
+	f32 knapsack_space = 50000;
 	
-	Item* items = generate_random_items(n, 100, 100);
+	Item* items = generate_random_items(n, 1000, 1000);
 	if(items) {
 		//print_items(items, n);
 		//Item result = recursive_solution(items, n, knapsack_space);
@@ -503,9 +528,15 @@ int main(void) {
 		printf("DETERMINISTIC:\n");
 		printf("\tMaximum weight: %lf\n", deterministic_result.weight);
 		printf("\tMaximum value : %lf\n", deterministic_result.value);
-		printf("STOCHASTIC:\n");
-		printf("\tMaximum weight: %lf\n", stochastic_result.weight);
-		printf("\tMaximum value : %lf\n", stochastic_result.value);
+#ifndef debug
+		for(u32 i = 0; i < 100; ++i) {
+			srand(i * i * i * i);
+			stochastic_result = simulated_annealing_solution(items, n, knapsack_space);
+			printf("STOCHASTIC:\n");
+			printf("\tMaximum weight: %lf\n", stochastic_result.weight);
+			printf("\tMaximum value : %lf\n", stochastic_result.value);
+		}
+#endif
 	}
 	
 	return 0;
