@@ -412,10 +412,8 @@ Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u
 
 // TODO(stekap): Add additional parameters that control annealing. Clean up and comment the code.
 
-Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
+Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, u32 iteration_count, u32 epoch_size, f32 temperature, f32 temperature_scalar, f32 minimal_temperature, f32 cost_scalar, f32 boltzmann_scalar) {
 	u8* state = calloc(n, sizeof(u8));
-
-	f32 temperature = 10;
 
 	Item previous_cost = {0, 0};
 	Item cost = {0, 0};
@@ -434,18 +432,14 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 		}
 	}
 
-	f32 average_value = 0;
 	f32 max_value = items[0].value;
 	for(u32 i = 0; i < n; ++i) {
-		average_value += items[i].value;
 		if(items[i].value > max_value) {
 			max_value = items[i].value;
 		}
 	}
-	average_value /= n;
 
-	u32 i = 100000;
-	while(i--) {
+	while(iteration_count--) {
 		u32 random_item_index = random_int_in_range_exclusive(0, n);
 
 		// Flip the state for random item.
@@ -500,8 +494,8 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 			// Be careful here because delta should be positive. Since we know that within this condition
 			// current value is smaller, we force this by subtracting it from previous one and not the
 			// other way around.
-			f32 mapped_cost_difference = (previous_cost.value - cost.value) / (max_value) * 6;
-			f32 acceptance_probability = boltzmann_distribution(1, mapped_cost_difference, temperature);
+			f32 mapped_cost_difference = (previous_cost.value - cost.value) / (max_value) * cost_scalar;
+			f32 acceptance_probability = boltzmann_distribution(boltzmann_scalar, mapped_cost_difference, temperature);
 
 			// In this case we reject the flip.
 			if(random_f32() > acceptance_probability) {
@@ -510,8 +504,8 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space) {
 			}
 		}
 		
-		if(i % 100 == 0 && temperature > 0.1) {
-			temperature *= 0.95;
+		if(iteration_count % epoch_size == 0 && temperature > minimal_temperature) {
+			temperature *= temperature_scalar;
 		}
 	}
 
@@ -529,6 +523,14 @@ int main(void) {
 	u32 n = 100;
 	f32 knapsack_space = 5000;
 	
+	u32 iteration_count = 100000;
+	u32 epoch_size = 100;
+	f32 temperature = 10;
+	f32 temperature_scalar = 0.95;
+	f32 minimal_temperature = 0.1;
+	f32 cost_scalar = 6;
+	f32 boltzmann_scalar = 1;
+	
 	Item* items = generate_random_items(n, 1000, 1000);
 	if(items) {
 		//print_items(items, n);
@@ -536,7 +538,7 @@ int main(void) {
 		//Item result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		//Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		Item deterministic_result = iterative_solution_with_1D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
-		Item stochastic_result = simulated_annealing_solution(items, n, knapsack_space);
+		Item stochastic_result = simulated_annealing_solution(items, n, knapsack_space, iteration_count, epoch_size, temperature, temperature_scalar, minimal_temperature, cost_scalar, boltzmann_scalar);
 		Item max_stochastic_result = stochastic_result;
 		printf("DETERMINISTIC:\n");
 		printf("\tMaximum weight: %lf\n", deterministic_result.weight);
@@ -544,7 +546,7 @@ int main(void) {
 
 		for(u32 i = 0; i < 100; ++i) {
 			srand(i * i * i * i);
-			stochastic_result = simulated_annealing_solution(items, n, knapsack_space);
+			stochastic_result = simulated_annealing_solution(items, n, knapsack_space, iteration_count, epoch_size, temperature, temperature_scalar, minimal_temperature, cost_scalar, boltzmann_scalar);
 			if(stochastic_result.value > max_stochastic_result.value) {
 				max_stochastic_result = stochastic_result;
 			}
