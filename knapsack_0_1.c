@@ -14,6 +14,17 @@ struct Item {
 	f32 value;
 };
 
+typedef struct Simulated_Annealing_Parameters Simulated_Annealing_Parameters;
+struct Simulated_Annealing_Parameters {
+	u32 iteration_count;
+	u32 epoch_size;
+	f32 temperature;
+	f32 temperature_scalar;
+	f32 minimal_temperature;
+	f32 cost_scalar;
+	f32 boltzmann_scalar;
+};
+
 // =========================================================================================================
 // HELPER AND DEBUG FUNCTIONS
 // =========================================================================================================
@@ -412,7 +423,7 @@ Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u
 
 // TODO(stekap): Add additional parameters that control annealing. Clean up and comment the code.
 
-Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, u32 iteration_count, u32 epoch_size, f32 temperature, f32 temperature_scalar, f32 minimal_temperature, f32 cost_scalar, f32 boltzmann_scalar) {
+Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, Simulated_Annealing_Parameters SAP) {
 	u8* state = calloc(n, sizeof(u8));
 
 	Item previous_cost = {0, 0};
@@ -439,7 +450,9 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, u32 it
 		}
 	}
 
-	while(iteration_count--) {
+	f32 mapped_cost_difference = 0;
+	f32 acceptance_probability = 0;
+	while(SAP.iteration_count--) {
 		u32 random_item_index = random_int_in_range_exclusive(0, n);
 
 		// Flip the state for random item.
@@ -464,38 +477,13 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, u32 it
 			cost.weight -= items[random_item_index].weight;
 		}
 
-		// L*e^(-delta*K/T) = 0.1
-		// ln(0.1) = ln(L) -delta*K/T, L = 1
-		// ln(0.1) = -delta*K/T
-		// delta*K = -T*ln(0.1)
-		// K = -(T/delta)*ln(0.1)
-		// K = (T/1)*2.3
-		// K = 2.3*T - rough calculation for K that gives us 0.1 for given distribution
-
-		// We will try to move from T=10 to T=1.
-		// Out delta is first normalized and then multiplied by 2.3*T which gives us range for
-		// delta from 0 to a point where distribution is roughly 0.1, which seems like a decent
-		// range of probabilities that are not extreme.
-
-		// Problem is that this leads to the same behaviour for all T since T cancels out.
-		// Yet, we need to map delta*K to some suitable range of probabilities.
-
-		// Maybe we can look at a point where value is close to zero for T = 1 (or whatever minimal
-		// value we choose) and then map delta*K to range a bit bigger than that one?
-
-		// Another possible tweak is in the scalar of boltzmann distribution. Maybe it can be dependant on
-		// temperature?
-
-		// If we are in a better position, then we don't need to do anything here, since we already
-		// did the flip.
-
 		// If we are locally in worse state than before.
 		if(cost.value < previous_cost.value) {
 			// Be careful here because delta should be positive. Since we know that within this condition
 			// current value is smaller, we force this by subtracting it from previous one and not the
 			// other way around.
-			f32 mapped_cost_difference = (previous_cost.value - cost.value) / (max_value) * cost_scalar;
-			f32 acceptance_probability = boltzmann_distribution(boltzmann_scalar, mapped_cost_difference, temperature);
+			mapped_cost_difference = (previous_cost.value - cost.value) / (max_value) * SAP.cost_scalar;
+			acceptance_probability = boltzmann_distribution(SAP.boltzmann_scalar, mapped_cost_difference, SAP.temperature);
 
 			// In this case we reject the flip.
 			if(random_f32() > acceptance_probability) {
@@ -504,8 +492,8 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, u32 it
 			}
 		}
 		
-		if(iteration_count % epoch_size == 0 && temperature > minimal_temperature) {
-			temperature *= temperature_scalar;
+		if(SAP.iteration_count % SAP.epoch_size == 0 && SAP.temperature > SAP.minimal_temperature) {
+			SAP.temperature *= SAP.temperature_scalar;
 		}
 	}
 
@@ -518,35 +506,39 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, u32 it
 #include <time.h>
 
 int main(void) {
-	u32 seed = 1234;
 	srand(time(0));
 	u32 n = 100;
 	f32 knapsack_space = 5000;
-	
-	u32 iteration_count = 100000;
-	u32 epoch_size = 100;
-	f32 temperature = 10;
-	f32 temperature_scalar = 0.95;
-	f32 minimal_temperature = 0.1;
-	f32 cost_scalar = 6;
-	f32 boltzmann_scalar = 1;
-	
+
+	Simulated_Annealing_Parameters SAP = {
+		.iteration_count = 100000,
+		.epoch_size = 100,
+		.temperature = 10,
+		.temperature_scalar = 0.95,
+		.minimal_temperature = 0.1,
+		.cost_scalar = 6,
+		.boltzmann_scalar = 1
+	};
+		
 	Item* items = generate_random_items(n, 1000, 1000);
 	if(items) {
-		//print_items(items, n);
-		//Item result = recursive_solution(items, n, knapsack_space);
-		//Item result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
-		//Item result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
-		Item deterministic_result = iterative_solution_with_1D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
-		Item stochastic_result = simulated_annealing_solution(items, n, knapsack_space, iteration_count, epoch_size, temperature, temperature_scalar, minimal_temperature, cost_scalar, boltzmann_scalar);
-		Item max_stochastic_result = stochastic_result;
+		Item deterministic_result = {0, 0};
+		Item stochastic_result = {0, 0};
+		// print_items(items, n);
+		// deterministic_result = recursive_solution(items, n, knapsack_space);
+		// deterministic_result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		// deterministic_result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		deterministic_result = iterative_solution_with_1D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
+		
 		printf("DETERMINISTIC:\n");
 		printf("\tMaximum weight: %lf\n", deterministic_result.weight);
 		printf("\tMaximum value : %lf\n", deterministic_result.value);
-
-		for(u32 i = 0; i < 100; ++i) {
-			srand(i * i * i * i);
-			stochastic_result = simulated_annealing_solution(items, n, knapsack_space, iteration_count, epoch_size, temperature, temperature_scalar, minimal_temperature, cost_scalar, boltzmann_scalar);
+		
+		stochastic_result = simulated_annealing_solution(items, n, knapsack_space, SAP);
+		Item max_stochastic_result = stochastic_result;
+		for(u32 i = 0; i < 10; ++i) {
+			srand(time(0));
+			stochastic_result = simulated_annealing_solution(items, n, knapsack_space, SAP);
 			if(stochastic_result.value > max_stochastic_result.value) {
 				max_stochastic_result = stochastic_result;
 			}
