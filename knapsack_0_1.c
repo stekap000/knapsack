@@ -2,8 +2,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-#define IGNORE(param) (void)(param)
-
 typedef unsigned char u8;
 typedef unsigned int u32;
 typedef float f32;
@@ -16,13 +14,13 @@ struct Item {
 
 typedef struct Simulated_Annealing_Parameters Simulated_Annealing_Parameters;
 struct Simulated_Annealing_Parameters {
-	u32 iteration_count;
-	u32 epoch_size;
-	f32 temperature;
-	f32 temperature_scalar;
-	f32 minimal_temperature;
-	f32 cost_scalar;
-	f32 boltzmann_scalar;
+	u32 iteration_count;      // Total number of iterations for simulated annealing.
+	u32 epoch_size;           // Number of iterations that will pass before the next temperature adjustment.
+	f32 temperature;          // Starting temperature value.
+	f32 temperature_scalar;   // Scalar "a" that adjusts temperature in every epoch (T(n+1) = a*T(n)).
+	f32 minimal_temperature;  // Lower bound for temperature after which if won't be further adjusted.
+	f32 cost_scalar;          // Used to adjust cost difference mapping after normalization.
+	f32 boltzmann_scalar;     // Used to scale Boltzmann distribution.
 };
 
 // =========================================================================================================
@@ -36,11 +34,9 @@ Item* generate_random_items(u32 n, f32 max_item_weight, f32 max_item_value) {
 			items[i].weight = ((f32)rand()/(f32)RAND_MAX * max_item_weight);
 			items[i].value = ((f32)rand()/(f32)RAND_MAX * max_item_value);
 		}
-		return items;
 	}
-	else {
-		return 0;
-	}
+
+	return items;
 }
 
 u8 random_u8() {
@@ -417,19 +413,62 @@ Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u
 // =========================================================================================================
 // SIMULATED ANNEALING APPROXIMATE SOLUTION
 //
-// Time complexity  :
-// Space complexity :
+// Time complexity  : O(iteration_count)
+// Space complexity : O(number of bits needed to keep state of included items)
 // =========================================================================================================
 
-// TODO(stekap): Add additional parameters that control annealing. Clean up and comment the code.
+// This is an approximate approach that allows us to solve the problem in linear time in the number of
+// iterations.
+
+// In order to solve the problem this way, we view it as a problem of finding a path from the starting point
+// to some ideal final point in phase space. Phase space is just a space that contains all possible states
+// of the problem. In our case, a state is an array/vector whose element at index "i" tells us if an
+// item with index "i" is included in the knapsack in that state. Thus, our phase space has 2^n points,
+// where n is the number of items.
+
+// Since we don't know what the optimal solution is for the given input, in order to move towards it, we
+// need to be able to tell how good some state is. We can just say that a state is better if it has a
+// larger value, as long as its weight doesn't exceed knapsack space. This allows us to also compare two
+// states ie. it allows us to decide whether we should move to the next state. In other words, it allows
+// us to build path from the starting point towards some optimal point.
+
+// We start at some random state. We choose a possible next state by making a small local step in phase
+// space. In this implementation, that step is made by just flipping one state element. After this, we
+// check if we are in a better state (state with larger value). If the state is better, then we accept
+// it immediately. If it is worse, then we accept it with some probability that should decay as we are
+// traveling from start to finish through the phase space. Reason for accepting worse solutions with
+// some probability, instead of just rejecting them, is that we don't want to end up is some local
+// optimum from which we can't escape. On the other hand, we want to converge to a decent solution as
+// we move further, which is why we lower acceptance probability with time. Intuitively, this strategy
+// means that we are willing to take risks while the phase space is still relatively unknown to us. But
+// as we explore it further, we will stumble upon paths that seem promising and at that point we will be
+// less willing to significantly diverge from those paths.
+
+// We control probability decay by using a sequnce of scaled botzmann distributions ie. functions of the
+// form (A*e^(-cost_diff/T)). When we lower "T", overall value will be smaller, meaning that we can lower
+// this parameter, called temperature, if we want lower probability. "A" just allows us to experiment.
+// Cost difference is a difference between the values of previous and current state and should be
+// positive, because if it is negative, that means that we found a better state and should certainly
+// choose it and in this case, we don't need distribution to tell us the probability of choice.
+// When the cost difference is higher, probability will be lower, meaning that we are less sure of
+// making a much worse state choice.
+
+// In short, we just need to keep lowering temperature in each epoch (epoch is some number of
+// iterations). This will basically choose a particular Boltzmann distribution for specific epoch,
+// which we will then sample with cost differences. Every next epoch, a new distribution is chosen
+// that has overall smaller probabilities than the previous one.
 
 Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, Simulated_Annealing_Parameters SAP) {
+	// Keeps track of which items are currently included.
+	// Effectively represents one point in the phase space of the system.
+	// Here, we use byte to store one bit of information, which is a waste, and a better implementation
+	// would fully utilize memory space.
 	u8* state = calloc(n, sizeof(u8));
 
 	Item previous_cost = {0, 0};
 	Item cost = {0, 0};
 
-	// Randomly pick items for initial state.
+	// Randomly pick items for initial state, such that maximum knapsack space is not exceeded.
 	for(u32 i = 0; i < n; ++i) {
 		state[i] = random_u8();
 		if(state[i]) {
@@ -443,6 +482,8 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, Simula
 		}
 	}
 
+	// Find the maximum value, which we will use to scale cost difference before using
+	// it with Boltzmann distribution.
 	f32 max_value = items[0].value;
 	for(u32 i = 0; i < n; ++i) {
 		if(items[i].value > max_value) {
@@ -453,11 +494,13 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, Simula
 	f32 mapped_cost_difference = 0;
 	f32 acceptance_probability = 0;
 	while(SAP.iteration_count--) {
+		// Pick random item index.
 		u32 random_item_index = random_int_in_range_exclusive(0, n);
 
-		// Flip the state for random item.
+		// Flip the state for picked item.
 		state[random_item_index] ^= 1;
 
+		// This is used in the case of rejection of current change.
 		previous_cost = cost;
 
 		// If the item is now included.
@@ -477,21 +520,23 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, Simula
 			cost.weight -= items[random_item_index].weight;
 		}
 
-		// If we are locally in worse state than before.
+		// If we are in the worse state after making a change.
 		if(cost.value < previous_cost.value) {
-			// Be careful here because delta should be positive. Since we know that within this condition
-			// current value is smaller, we force this by subtracting it from previous one and not the
-			// other way around.
+			// Be careful here because cost difference should be positive. Since we know that within this
+			// condition current value is smaller, we force this by subtracting it from previous one and not the
+			// other way around. Reason for this is that Boltzmann distribution has minus in the exponent.
 			mapped_cost_difference = (previous_cost.value - cost.value) / (max_value) * SAP.cost_scalar;
 			acceptance_probability = boltzmann_distribution(SAP.boltzmann_scalar, mapped_cost_difference, SAP.temperature);
 
-			// In this case we reject the flip.
+			// In this case we reject the change.
 			if(random_f32() > acceptance_probability) {
 				cost = previous_cost;
 				state[random_item_index] ^= 1;
 			}
 		}
-		
+
+		// Adjust temperature every epoch_size iterations and do it if the temperature is still
+		// larger than minimum temperature.
 		if(SAP.iteration_count % SAP.epoch_size == 0 && SAP.temperature > SAP.minimal_temperature) {
 			SAP.temperature *= SAP.temperature_scalar;
 		}
@@ -507,20 +552,24 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, Simula
 
 int main(void) {
 	srand(time(0));
+	
 	u32 n = 100;
 	f32 knapsack_space = 5000;
+	f32 max_item_weight = 1000;
+	f32 max_item_value = 1000;
+
+	Item* items = generate_random_items(n, max_item_weight, max_item_value);
 
 	Simulated_Annealing_Parameters SAP = {
-		.iteration_count = 100000,
-		.epoch_size = 100,
+		.iteration_count = 10000,
+		.epoch_size = 10,
 		.temperature = 10,
 		.temperature_scalar = 0.95,
 		.minimal_temperature = 0.1,
 		.cost_scalar = 6,
 		.boltzmann_scalar = 1
 	};
-		
-	Item* items = generate_random_items(n, 1000, 1000);
+	
 	if(items) {
 		Item deterministic_result = {0, 0};
 		Item stochastic_result = {0, 0};
@@ -536,7 +585,7 @@ int main(void) {
 		
 		stochastic_result = simulated_annealing_solution(items, n, knapsack_space, SAP);
 		Item max_stochastic_result = stochastic_result;
-		for(u32 i = 0; i < 10; ++i) {
+		for(u32 i = 0; i < 20; ++i) {
 			srand(time(0));
 			stochastic_result = simulated_annealing_solution(items, n, knapsack_space, SAP);
 			if(stochastic_result.value > max_stochastic_result.value) {
