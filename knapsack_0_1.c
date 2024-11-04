@@ -2,6 +2,14 @@
 #include <stdlib.h>
 #include <math.h>
 
+// This is here just for the purpose of different random generations, so we don't need
+// to bother with managing random generator seeds.
+#include <time.h>
+
+// =========================================================================================================
+// TYPES
+// =========================================================================================================
+
 typedef unsigned char u8;
 typedef unsigned int u32;
 typedef float f32;
@@ -430,7 +438,7 @@ Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u
 // need to be able to tell how good some state is. We can just say that a state is better if it has a
 // larger value, as long as its weight doesn't exceed knapsack space. This allows us to also compare two
 // states ie. it allows us to decide whether we should move to the next state. In other words, it allows
-// us to build path from the starting point towards some optimal point.
+// us to build a path from the starting point towards some optimal point.
 
 // We start at some random state. We choose a possible next state by making a small local step in phase
 // space. In this implementation, that step is made by just flipping one state element. After this, we
@@ -446,12 +454,12 @@ Item iterative_solution_with_1D_buffer_and_integer_weights(Item* items, u32 n, u
 
 // We control probability decay by using a sequnce of scaled botzmann distributions ie. functions of the
 // form (A*e^(-cost_diff/T)). When we lower "T", overall value will be smaller, meaning that we can lower
-// this parameter, called temperature, if we want lower probability. "A" just allows us to experiment.
-// Cost difference is a difference between the values of previous and current state and should be
-// positive, because if it is negative, that means that we found a better state and should certainly
-// choose it and in this case, we don't need distribution to tell us the probability of choice.
-// When the cost difference is higher, probability will be lower, meaning that we are less sure of
-// making a much worse state choice.
+// this parameter, called temperature, if we want lower probability. "A" just allows us to experiment by
+// scaling the whole distribution. Cost difference is a difference between the values of previous and
+// current state and should be positive, because if it is negative, that means that we found a better
+// state and should certainly choose it, and in that case, we don't need distribution to tell us the
+// probability of choice, since it is already 1. When the cost difference is higher, probability will
+// be lower, meaning that we are less sure of making a much worse state choice.
 
 // In short, we just need to keep lowering temperature in each epoch (epoch is some number of
 // iterations). This will basically choose a particular Boltzmann distribution for specific epoch,
@@ -548,8 +556,6 @@ Item simulated_annealing_solution(Item* items, u32 n, f32 knapsack_space, Simula
 
 // =========================================================================================================
 
-#include <time.h>
-
 int main(void) {
 	srand(time(0));
 	
@@ -560,6 +566,7 @@ int main(void) {
 
 	Item* items = generate_random_items(n, max_item_weight, max_item_value);
 
+	// Simulated annealing parameters for this example.
 	Simulated_Annealing_Parameters SAP = {
 		.iteration_count = 10000,
 		.epoch_size = 10,
@@ -573,7 +580,9 @@ int main(void) {
 	if(items) {
 		Item deterministic_result = {0, 0};
 		Item stochastic_result = {0, 0};
+		
 		// print_items(items, n);
+
 		// deterministic_result = recursive_solution(items, n, knapsack_space);
 		// deterministic_result = recursive_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
 		// deterministic_result = iterative_solution_with_2D_buffer_and_integer_weights(items, n, (u32)knapsack_space);
@@ -582,10 +591,13 @@ int main(void) {
 		printf("DETERMINISTIC:\n");
 		printf("\tMaximum weight: %lf\n", deterministic_result.weight);
 		printf("\tMaximum value : %lf\n", deterministic_result.value);
-		
+
+		// Different starting points in phase space give different solutions in general.
+		// In this example, we run stochastic solution multiple times and then print
+		// the best result.
 		stochastic_result = simulated_annealing_solution(items, n, knapsack_space, SAP);
 		Item max_stochastic_result = stochastic_result;
-		for(u32 i = 0; i < 20; ++i) {
+		for(u32 i = 0; i < 10; ++i) {
 			srand(time(0));
 			stochastic_result = simulated_annealing_solution(items, n, knapsack_space, SAP);
 			if(stochastic_result.value > max_stochastic_result.value) {
